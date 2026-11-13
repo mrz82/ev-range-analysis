@@ -1,0 +1,4 @@
+"","GVIF","Df","GVIF^(1/(2*Df))","Interacts With","Other Predictors"
+"log_battery",2.11358965778633,3,1.13284400973,"drivetrain_binary","log_length"
+"drivetrain_binary",2.11358965778633,3,1.13284400973,"log_battery","log_length"
+"log_length",2.11358965778633,1,1.45381899072282,"--  ","log_battery, drivetrain_binary"

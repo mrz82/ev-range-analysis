@@ -1,0 +1,25 @@
+# R session / history
+.Rhistory
+.RData
+.Rapp.history
+.Rproj.user/
+*.Rproj
+
+# Stray base-graphics device output
+Rplots.pdf
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Generated outputs are reproducible via `Rscript R/run_all.R`.
+# They are regenerated on every run; uncomment to keep them out of version control.
+# data/processed/
+# figures/
+# output/
+
+# Keep the tracked placeholder files even if the folders are ignored above
+!data/processed/.gitkeep
+!figures/.gitkeep
+!output/tables/.gitkeep

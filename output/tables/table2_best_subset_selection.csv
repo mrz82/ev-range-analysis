@@ -1,0 +1,4 @@
+"model","cp","adj_r2","(Intercept)","log_battery","drivetrain_binaryAWD","log_length"
+1,152.069,0.7933,TRUE,TRUE,FALSE,FALSE
+2,6.98,0.8415,TRUE,TRUE,FALSE,TRUE
+3,4,0.8428,TRUE,TRUE,TRUE,TRUE
