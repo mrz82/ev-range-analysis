@@ -16,11 +16,13 @@
 # ==============================================================================
 
 if (!exists("PROJECT_ROOT")) {
-  .cand <- c("R/00_setup.R", "00_setup.R", file.path("..", "R", "00_setup.R"))
-  .hit  <- .cand[file.exists(.cand)][1]
-  if (is.na(.hit)) stop("Cannot find 00_setup.R; run from the project root.",
-                        call. = FALSE)
-  source(.hit)
+  .args  <- commandArgs(trailingOnly = FALSE)
+  .f     <- sub("^--file=", "", .args[grepl("^--file=", .args)])
+  .dir   <- if (length(.f) == 1 && nzchar(.f)) dirname(normalizePath(.f)) else getwd()
+  .setup <- file.path(.dir, "00_setup.R")
+  if (!file.exists(.setup)) stop("Cannot find 00_setup.R next to this script.",
+                                 call. = FALSE)
+  source(.setup)
 }
 
 message("\n=== 02_eda.R ===")

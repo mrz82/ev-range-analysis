@@ -16,26 +16,44 @@ suppressPackageStartupMessages({
 })
 
 # ------------------------------------------------------------------------------
-# Locate the project root by walking up from the working directory until the
-# raw data file is found. This lets the scripts be run from the project root,
-# from R/, or sourced from run_all.R without editing any hard-coded paths.
+# Locate the project root by walking UP from a starting directory until the raw
+# data file is found. The start defaults to the directory of the *scripts*
+# (R/), not getwd(), so the pipeline runs correctly no matter which directory
+# it is launched from (e.g. `Rscript /abs/path/R/run_all.R` from anywhere).
 # ------------------------------------------------------------------------------
-find_project_root <- function(start  = getwd(),
-                              marker = file.path("data", "raw",
-                                                 "electric_vehicles_spec_2025.csv")) {
+find_project_root <- function(start, marker = file.path(
+                                "data", "raw",
+                                "electric_vehicles_spec_2025.csv")) {
   dir <- normalizePath(start, mustWork = FALSE)
   repeat {
     if (file.exists(file.path(dir, marker))) return(dir)
     parent <- dirname(dir)
     if (identical(parent, dir)) {
       stop("Could not locate the project root (looked for '", marker, "').\n",
-           "Run the scripts from inside the project directory.", call. = FALSE)
+           "Expected the raw data under <root>/data/raw/.", call. = FALSE)
     }
     dir <- parent
   }
 }
 
-PROJECT_ROOT  <- find_project_root()
+# Directory that holds the R scripts. Resolved, in order of preference, from:
+#   1. an explicit override set by the caller (run_all.R sets `.ev_script_dir`),
+#   2. the `--file=` argument Rscript passes for the script being executed,
+#   3. the current working directory (interactive `source()` fallback).
+.detect_script_dir <- function() {
+  if (exists(".ev_script_dir", inherits = TRUE)) {
+    d <- get(".ev_script_dir", inherits = TRUE)
+    if (is.character(d) && nzchar(d)) return(normalizePath(d, mustWork = FALSE))
+  }
+  args <- commandArgs(trailingOnly = FALSE)
+  f <- sub("^--file=", "", args[grepl("^--file=", args)])
+  if (length(f) == 1 && nzchar(f)) {
+    return(dirname(normalizePath(f, mustWork = FALSE)))
+  }
+  getwd()
+}
+
+PROJECT_ROOT  <- find_project_root(start = .detect_script_dir())
 
 # Standard project paths (all relative to the located root -- no machine paths)
 RAW_DATA      <- file.path(PROJECT_ROOT, "data", "raw",

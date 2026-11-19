@@ -26,11 +26,15 @@ step <- function(f) {
   source(file.path(.script_dir, f))
 }
 
+# Tell 00_setup.R exactly where the scripts live, so project-root detection is
+# independent of the working directory even when sourced (not run via --file).
+.ev_script_dir <- .script_dir
 source(file.path(.script_dir, "00_setup.R"))  # defines PROJECT_ROOT, paths, helpers
 step("01_clean_data.R")
 step("02_eda.R")
 step("03_model.R")
-step("04_verify.R")
+step("04_verify.R")       # gate: core results must match the report
+step("05_sensitivity.R")  # robustness/sensitivity of the interaction
 
 message("\n", strrep("=", 78),
         "\nAll steps complete. See figures/ and output/tables/ for results.\n",

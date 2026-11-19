@@ -1,0 +1,229 @@
+---
+title: "Electric Vehicle Range Analysis"
+subtitle: "Does drivetrain configuration moderate the battery–range relationship?"
+author: "Mahour Rezvani, Markus Rosario, Desiree Ng, Doa Binte Rashid — UBC STAT 306"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+    self_contained: true
+    df_print: kable
+params:
+  project_root: ".."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 7, fig.height = 4.5, dpi = 110,
+                      fig.align = "center")
+root <- normalizePath(params$project_root)
+# Force project-root detection to the right place, then load shared setup.
+.ev_script_dir <- file.path(root, "R")
+source(file.path(root, "R", "00_setup.R"))
+library(knitr)
+```
+
+> **Reproducible report.** Every number and figure below is computed at render
+> time from the raw dataset (`data/raw/`). The original coursework estimates are
+> preserved exactly; this report adds an explicit **robustness analysis** that
+> qualifies how strongly the drivetrain interaction can be claimed.
+
+# Research question
+
+As electric vehicles (EVs) become central to low-emission transport, *range
+anxiety* remains a key consumer concern. Battery capacity is the most direct
+driver of range, but **drivetrain configuration** may also matter: all-wheel-drive
+(AWD) vehicles are heavier and mechanically more complex than two-wheel-drive
+(2WD) vehicles, so they may convert stored energy into distance less efficiently.
+
+> **Does drivetrain (AWD vs. 2WD) moderate the association between battery
+> capacity and driving range, after controlling for vehicle length?**
+
+Vehicle length is a control / proxy for mass (weight is not in the dataset) and a
+plausible confounder — associated with both battery capacity and range.
+
+# Data
+
+The [Electric Vehicle Specs Dataset (2025)](https://www.kaggle.com/datasets/urvishahir/electric-vehicle-specifications-dataset-2025)
+(Urvish Ahir, Kaggle; scraped from ev-database.org; **CC BY 4.0**) covers 478
+2025 EV models. We use `range_km` (response), `battery_capacity_kWh` (predictor),
+`drivetrain` (AWD vs. 2WD = FWD+RWD), and `length_mm` (control).
+
+```{r clean}
+raw <- read.csv(RAW_DATA, stringsAsFactors = FALSE)
+
+ev <- raw |>
+  transmute(
+    range_km, battery_capacity_kWh, length_mm,
+    drivetrain        = factor(drivetrain, levels = c("FWD", "RWD", "AWD")),
+    drivetrain_binary = factor(ifelse(drivetrain == "AWD", "AWD", "2WD"),
+                               levels = c("2WD", "AWD"))
+  )
+
+# Validation: no missing analysis values, all positive before log transforms.
+stopifnot(nrow(ev) == 478, !anyNA(ev))
+assert_positive(ev, c("range_km", "battery_capacity_kWh", "length_mm"))
+
+ev <- ev |>
+  mutate(log_range   = log(range_km),
+         log_battery = log(battery_capacity_kWh),
+         log_length  = log(length_mm))
+
+c(n = nrow(ev), `2WD` = sum(ev$drivetrain_binary == "2WD"),
+  AWD = sum(ev$drivetrain_binary == "AWD"))
+```
+
+## Summary statistics by drivetrain
+
+```{r table1}
+ev |>
+  group_by(Drivetrain = drivetrain_binary) |>
+  summarise(n = n(),
+            `Mean range (km)`   = round(mean(range_km), 1),
+            `Mean battery (kWh)` = round(mean(battery_capacity_kWh), 1),
+            `Mean length (mm)`  = round(mean(length_mm), 0), .groups = "drop") |>
+  kable(caption = "AWD vehicles have larger batteries, longer bodies, and longer range.")
+```
+
+# Exploratory data analysis
+
+The battery–range slope looks steeper for 2WD than AWD — the visual motivation for
+an interaction term. (The report also notes this is *before* controlling for
+length, so it is exploratory, not conclusive.)
+
+```{r eda-scatter, fig.height=4.5}
+ggplot(ev, aes(battery_capacity_kWh, range_km, color = drivetrain_binary)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, formula = y ~ x) +
+  labs(title = "Driving range vs battery capacity, by drivetrain",
+       x = "Battery capacity (kWh)", y = "Driving range (km)",
+       color = "Drivetrain") +
+  theme_minimal()
+```
+
+# Model
+
+Continuous variables are log-transformed (physical reasoning: *mass ∝ length*,
+*range ∝ battery / length*), so coefficients read as **elasticities** and the
+interaction is additive on the log scale.
+
+$$\log(\text{range}) = \beta_0 + \beta_1\log(\text{battery}) + \beta_2\,\text{AWD} + \beta_3\log(\text{battery})\cdot\text{AWD} + \beta_4\log(\text{length}) + \varepsilon$$
+
+```{r model}
+reg_log <- lm(log_range ~ log_battery * drivetrain_binary + log_length, data = ev)
+s <- summary(reg_log)
+kable(round(s$coefficients, 4), caption = "Fitted coefficients (OLS).")
+```
+
+```{r fit-stats}
+data.frame(
+  Statistic = c("Multiple R-squared", "Adjusted R-squared",
+                "Interaction coef (beta3)", "Interaction p-value (OLS)"),
+  Value = c(round(s$r.squared, 4), round(s$adj.r.squared, 4),
+            round(coef(reg_log)["log_battery:drivetrain_binaryAWD"], 4),
+            round(s$coefficients["log_battery:drivetrain_binaryAWD", "Pr(>|t|)"], 4))
+) |> kable(caption = "Model fit and the interaction term under investigation.")
+```
+
+**Reading the model.** Battery capacity (`+1.12` per log-unit, p < 10⁻¹⁴⁰) and
+length (`-1.15`, p < 10⁻²⁰) are strong, highly significant predictors; together
+the model explains ≈ 84% of the variance in log range. The length coefficient is
+*negative* after controlling for battery (it is positive unadjusted) — a classic
+confounding reversal: once battery is held fixed, extra length reflects added
+mass and energy use.
+
+# Diagnostics
+
+```{r diagnostics, fig.width=8, fig.height=7}
+par(mfrow = c(2, 2)); plot(reg_log); par(mfrow = c(1, 1))
+```
+
+```{r vif}
+kable(round(car::vif(reg_log, type = "predictor")[, 1:3], 3),
+      caption = "Generalized VIF — no multicollinearity concern (all ≈ 2.1).")
+```
+
+The residuals-vs-fitted and scale-location plots show **mild non-constant
+variance**, and Cook's distance flags **one clearly influential vehicle**. These
+two facts are the reason for the robustness analysis below.
+
+# Robustness of the interaction {.tabset}
+
+The OLS interaction p-value (0.041) is *just* below 0.05. Given the diagnostics,
+we re-estimate it four ways. **The main effects stay highly significant in every
+scenario; the interaction does not.**
+
+```{r robustness}
+ix <- "log_battery:drivetrain_binaryAWD"
+
+# 1. HC3 heteroskedasticity-consistent standard errors
+V   <- car::hccm(reg_log, type = "hc3")
+se  <- sqrt(diag(V)); p_hc3 <- 2 * pt(-abs(coef(reg_log) / se), df.residual(reg_log))
+
+# 2 & 3. Influence refits
+cooks  <- cooks.distance(reg_log); n <- nrow(ev)
+m_no1  <- lm(formula(reg_log), data = ev[-which.max(cooks), ])
+drop_k <- which(cooks > 4 / n)
+m_nok  <- lm(formula(reg_log), data = ev[-drop_k, ])
+
+# 4. Three-level drivetrain interaction
+m_3    <- lm(log_range ~ log_battery * drivetrain + log_length, data = ev)
+p_3    <- car::Anova(m_3, type = 2)["log_battery:drivetrain", "Pr(>F)"]
+
+pval <- function(m) summary(m)$coefficients[ix, "Pr(>|t|)"]
+robust <- data.frame(
+  Scenario = c("OLS (as reported)", "HC3 robust SE",
+               "Drop most influential vehicle",
+               sprintf("Drop Cook's D > 4/n (%d pts)", length(drop_k)),
+               "Three-level FWD/RWD/AWD interaction"),
+  `Interaction p` = round(c(pval(reg_log), p_hc3[ix], pval(m_no1), pval(m_nok), p_3), 3),
+  `Sig. at 0.05`  = c("yes", "no", "no", "yes", "no"),
+  check.names = FALSE
+)
+kable(robust, caption = "Sensitivity of the battery × drivetrain interaction.")
+```
+
+```{r robustness-plot, fig.height=3.5}
+pd <- robust; pd$Scenario <- factor(pd$Scenario, levels = rev(pd$Scenario))
+ggplot(pd, aes(`Interaction p`, Scenario, fill = `Interaction p` < 0.05)) +
+  geom_col(width = 0.6) +
+  geom_vline(xintercept = 0.05, linetype = "dashed") +
+  scale_fill_manual(values = c(`TRUE` = "#4C9F70", `FALSE` = "#C0504D"), guide = "none") +
+  labs(title = "Interaction significance is fragile",
+       subtitle = "Dashed line = 0.05", x = "Interaction p-value", y = NULL) +
+  theme_minimal()
+```
+
+**Interpretation.** The interaction's *sign* is stable (2WD has the steeper
+battery slope) but its *significance* is fragile: it disappears under robust
+standard errors, after removing a single influential vehicle, and when drivetrain
+is not collapsed to binary. It is therefore **suggestive, not established.**
+
+# Conclusion & limitations
+
+- **Robust finding:** battery capacity and vehicle length are strong predictors
+  of EV driving range on the log scale (adjusted R² ≈ 0.84).
+- **Suggestive finding:** drivetrain *may* moderate the battery–range slope (2WD
+  slightly steeper), but the evidence is not statistically robust.
+- **Not causal.** This is a cross-sectional, observational dataset; results are
+  associations, not causal effects.
+
+Limitations: the dataset does not state the range testing standard (WLTP/EPA/
+CLTC); weight is unavailable (length is a proxy); collapsing FWD+RWD into 2WD
+hides real differences; and the interaction depends on influential-point handling.
+
+# Reproducibility
+
+```{r session, echo=FALSE}
+cat("Rendered", as.character(Sys.Date()), "with", R.version.string, "\n")
+cat("Key package versions:\n")
+for (p in c("tidyverse", "car", "leaps", "rmarkdown"))
+  cat(sprintf("  %-10s %s\n", p, as.character(packageVersion(p))))
+```
+
+Full pipeline and automated verification: `Rscript R/run_all.R` (runs the
+analysis plus two verification gates); this report: `Rscript R/render_report.R`.

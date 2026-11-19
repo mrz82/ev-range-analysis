@@ -1,5 +1,7 @@
 # Electric Vehicle Range Analysis
 
+[![reproduce](https://github.com/mrz82/ev-range-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/mrz82/ev-range-analysis/actions/workflows/ci.yml)
+
 **Does drivetrain configuration (AWD vs. 2WD) moderate the relationship between
 battery capacity and driving range, after controlling for vehicle size?**
 
@@ -8,9 +10,12 @@ originally completed as a STAT 306 (Introduction to Statistical Inference for
 Data Science) final project at UBC and refactored here into a clean, reproducible
 portfolio project.
 
-> The statistical methodology, model, and findings are **preserved exactly** from
-> the original group project. This repository reorganizes the code and adds
-> documentation and reproducibility checks; it does **not** change the analysis.
+> The original model and reported numbers are **preserved exactly** (adjusted
+> R² ≈ 0.844, interaction p = 0.041). This repository reorganizes the code and
+> adds documentation, automated reproducibility checks, and a **robustness
+> analysis**. The robustness analysis does **not** change the original estimates;
+> it qualifies how strongly the drivetrain interaction can be claimed (see
+> [Robustness](#robustness-of-the-interaction)).
 
 ---
 
@@ -57,22 +62,43 @@ Full details, assumptions, and limitations: [docs/METHODOLOGY.md](docs/METHODOLO
 
 ## Key results
 
-| Quantity | Value |
-|---|---|
-| Observations | 478 (2WD: 287, AWD: 191) |
-| log(battery) elasticity, 2WD | **+1.12%** range per +1% battery |
-| log(battery) elasticity, AWD | **+1.00%** range per +1% battery |
-| Interaction term (β3) | −0.12, **p = 0.041** (significant at α = 0.05) |
-| log(length) coefficient | −1.15 (p < 2×10⁻¹⁶) |
-| Multiple R² / Adjusted R² | 0.845 / **0.844** |
-| Multicollinearity (GVIF) | 2.11 (all predictors; no concern) |
+| Quantity | Value | Robust? |
+|---|---|---|
+| Observations | 478 (2WD: 287, AWD: 191) | — |
+| log(battery) coefficient | **+1.12** (elasticity), p < 10⁻¹⁴⁰ | ✅ highly robust |
+| log(length) coefficient | **−1.15**, p < 10⁻²⁰ | ✅ highly robust |
+| Multiple R² / Adjusted R² | 0.845 / **0.844** | ✅ stable |
+| Multicollinearity (GVIF) | 2.11 (all predictors; no concern) | — |
+| Interaction term (β₃) | −0.12, **nominal p = 0.041** | ⚠️ **not robust** (see below) |
 
-**Conclusion.** Battery capacity is a strong predictor of EV range, but drivetrain
-configuration meaningfully moderates that relationship: after controlling for
-length, 2WD vehicles gain more range per additional kWh than AWD vehicles. For a
-typical 100 kWh / 4800 mm vehicle, the model implies ~29 km more range for the
-2WD configuration than the AWD equivalent. These are **associational**,
-cross-sectional findings, not causal claims.
+**Conclusion.** Battery capacity and vehicle length are **strong, robust**
+predictors of EV range on the log scale (together ≈ 84% of variance). The
+project's headline question — whether drivetrain *moderates* the battery–range
+relationship — is answered **"suggestive but not conclusive"**: the interaction
+is significant under ordinary least squares (p = 0.041) but **loses significance
+under heteroskedasticity-robust standard errors, after removing a single
+influential vehicle, and in a three-level drivetrain specification** (details
+below). Directionally, 2WD vehicles appear to gain slightly more range per
+additional kWh than AWD vehicles, but the evidence is weak. All findings are
+**associational and cross-sectional — not causal.**
+
+## Robustness of the interaction
+
+Because the diagnostics flagged mild heteroskedasticity and an influential
+observation, `R/05_sensitivity.R` stress-tests the interaction. The main effects
+stay highly significant in every scenario; the interaction does not:
+
+| Scenario | Interaction p | Significant at 0.05? |
+|---|---|---|
+| OLS (as reported) | 0.041 | yes (barely) |
+| HC3 heteroskedasticity-robust SE | **0.057** | no |
+| Drop single most influential vehicle | **0.146** | no |
+| Drop all Cook's D > 4/n (29 points) | 0.005 | yes (stronger) |
+| Three-level FWD/RWD/AWD interaction | **0.312** | no |
+
+The interaction's sign is stable but its significance is fragile — hence it is
+reported as **suggestive**, not established. This is exactly why the sensitivity
+analysis is run and published rather than hidden.
 
 ## Figures
 
@@ -88,6 +114,7 @@ Generated into [`figures/`](figures/) by the analysis:
 | `fig5_battery_vs_length.png` | Battery capacity vs. vehicle length |
 | `fig6_diagnostics.png` | Residuals, Q-Q, scale-location, leverage |
 | `fig7_cooks_distance.png` | Cook's distance |
+| `fig8_sensitivity_interaction.png` | Interaction p-value across robustness checks |
 
 ## Project structure
 
@@ -102,19 +129,24 @@ ev-range-analysis/
 │   │   └── electric_vehicles_spec_2025.csv   # original Kaggle data (CC BY 4.0)
 │   ├── processed/            # ev_clean_data.csv (generated)
 │   └── DATA_SOURCE.md        # provenance, license, attribution
+├── .github/workflows/ci.yml  # CI: reproduce + verify on every push
 ├── R/
 │   ├── 00_setup.R            # packages, paths, validation helpers
 │   ├── 01_clean_data.R       # cleaning + validation
 │   ├── 02_eda.R              # summary tables + figures
 │   ├── 03_model.R            # selection, final model, diagnostics
 │   ├── 04_verify.R           # reproducibility checks vs. the report
-│   ├── run_all.R             # runs the full pipeline
+│   ├── 05_sensitivity.R      # robustness: HC3 SE, influence, 3-level
+│   ├── render_report.R       # renders the HTML report
+│   ├── run_all.R             # runs the full pipeline (+ both gates)
 │   └── legacy/
 │       └── R_Script_update_4_original.R   # original submitted script (unchanged)
 ├── figures/                  # generated plots
-├── output/tables/            # generated summary/model tables (CSV)
+├── output/tables/            # generated summary/model/robustness tables (CSV)
 ├── report/
-│   └── Final-Report.pdf       # authoritative final report
+│   ├── Final-Report.pdf       # authoritative original group report
+│   ├── ev_range_report.Rmd    # self-contained reproducible report (source)
+│   └── ev_range_report.html   # rendered report (generated)
 └── docs/
     └── METHODOLOGY.md
 ```
@@ -124,34 +156,56 @@ ev-range-analysis/
 ### Requirements
 
 - R ≥ 4.3
-- R packages: `tidyverse`, `car`, `leaps`
+- R packages: `tidyverse`, `car`, `leaps` (analysis); `rmarkdown`, `knitr` + a
+  `pandoc` install (HTML report only)
 
 ### Install dependencies
 
 ```r
-install.packages(c("tidyverse", "car", "leaps"))
+install.packages(c("tidyverse", "car", "leaps", "rmarkdown", "knitr"))
 ```
 
 Or, for a fully isolated environment without touching the system R (uses
 [conda-forge](https://conda-forge.org) via `micromamba`/`conda`):
 
 ```bash
-micromamba create -y -n ev -c conda-forge r-base=4.3 r-tidyverse r-car r-leaps
+micromamba create -y -n ev -c conda-forge \
+  r-base=4.3 r-tidyverse r-car r-leaps r-rmarkdown r-knitr pandoc
 micromamba run -n ev Rscript R/run_all.R
 ```
 
 ### Run the whole analysis
 
 ```bash
-# from the project root
+# from the project root (or from anywhere — the path is resolved automatically)
 Rscript R/run_all.R
 ```
 
-This cleans the data, regenerates every figure and table, and finishes by
-running `04_verify.R`, which checks the computed numbers against the values in
-`report/Final-Report.pdf` and prints a PASS/FAIL table (exiting non-zero on any
-failure). You can also run any step on its own, e.g. `Rscript R/03_model.R`
-(each step re-reads the cleaned data, so run `01_clean_data.R` first).
+This cleans the data and regenerates every figure and table, then runs **two
+verification gates** (each exits non-zero on any mismatch, so CI fails if results
+drift):
+
+1. `04_verify.R` — checks the core results (n, coefficients, adjusted R²,
+   selection statistics) against the values in `report/Final-Report.pdf`.
+2. `05_sensitivity.R` — reproduces the robustness numbers (HC3 p, influence-refit
+   p, three-level p).
+
+You can also run any step on its own, e.g. `Rscript R/03_model.R` (each step
+re-reads the cleaned data, so run `01_clean_data.R` first). Scripts locate the
+project root from their own location, so they work from any working directory.
+
+### HTML report
+
+```bash
+Rscript R/run_all.R          # produce the data/figures/tables first
+Rscript R/render_report.R    # -> report/ev_range_report.html (self-contained)
+```
+
+Open [`report/ev_range_report.html`](report/ev_range_report.html) — a polished,
+standalone report with the research question, methodology, results, diagnostics,
+and the robustness analysis. Continuous integration
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the full pipeline
+and both gates on every push and uploads the report as an artifact.
 
 ### Reproducibility check
 

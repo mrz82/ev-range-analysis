@@ -146,11 +146,38 @@ Assessed via the standard four diagnostic plots, GVIF, and Cook's distance:
 - **Multicollinearity (GVIF):** 2.11 for all predictors (GVIF^(1/(2·Df)) = 1.13,
   1.13, 1.45) — well below conventional thresholds.
 
-Overall the assumptions are **partially satisfied**; coefficients should be read
-with some caution, but the significant interaction and the overall pattern are
-robust.
+Overall the assumptions are **partially satisfied**. The main-effect pattern
+(battery ↑, length ↓) is robust, but the **mild heteroskedasticity and the
+influential observation flagged here directly motivate the sensitivity analysis
+in Section 9** — and that analysis shows the interaction term is *not* robust.
 
-## 9. Limitations
+## 9. Robustness / sensitivity analysis
+
+Because the OLS interaction p-value (0.041) sits just below 0.05 while the
+diagnostics flag mild non-constant variance and an influential point,
+`R/05_sensitivity.R` re-estimates the interaction four ways. The main effects
+stay highly significant throughout; the interaction does not:
+
+| Scenario | Interaction p | Significant at 0.05? |
+|---|---|---|
+| OLS (as reported) | 0.041 | yes (barely) |
+| HC3 heteroskedasticity-consistent SE | 0.057 | no |
+| Drop single most influential vehicle (max Cook's D) | 0.146 | no |
+| Drop all Cook's D > 4/n (29 points) | 0.005 | yes (stronger) |
+| Three-level FWD/RWD/AWD interaction (Type II F-test) | 0.312 | no |
+
+**Interpretation.** The interaction's *sign* is stable (2WD has the steeper
+battery slope), but its *statistical significance* is fragile: it disappears
+under robust standard errors, under removal of one influential vehicle, and when
+drivetrain is not collapsed to a binary. It is therefore reported as
+**suggestive, not established**. The removal of 29 moderate-influence points
+*strengthens* it, confirming the estimate is sensitive to influential-point
+handling in both directions. The core finding that survives every check is that
+**battery capacity and vehicle length are strong, robust predictors of range**
+(adjusted R² ≈ 0.84); the moderating role of drivetrain is a weaker, secondary
+signal.
+
+## 10. Limitations
 
 - The dataset does not specify the range testing standard (WLTP/EPA/CLTC), which
   can introduce inconsistency across brands.
