@@ -24,6 +24,12 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # Hard dependencies only (Depends / Imports / LinkingTo). This excludes
+          # Suggests, which otherwise pulls car's suggested package 'alr4' -- and
+          # alr4 Depends on car, a circular reference pak cannot solve. The
+          # analysis uses only core car functions (vif, hccm, Anova), so Suggests
+          # are not required.
+          dependencies: '"hard"'
           packages: |
             cran::tidyverse
             cran::car
